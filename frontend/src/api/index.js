@@ -41,4 +41,13 @@ export const nutrientApi = {
   create: (data) => api.post('/nutrient', data)
 }
 
+export const alertApi = {
+  list: (params = {}) => api.get('/alerts', { params }),
+  get: (id) => api.get(`/alerts/${id}`),
+  summary: () => api.get('/alerts/summary'),
+  create: (data) => api.post('/alerts', data),
+  update: (id, data) => api.patch(`/alerts/${id}`, data),
+  remove: (id) => api.delete(`/alerts/${id}`)
+}
+
 export default api

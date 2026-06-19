@@ -73,11 +73,34 @@ def get_nozzle_stats(db: Session) -> dict:
     latest_statuses = get_all_latest_statuses(db)
     total = len(latest_statuses)
     spraying = sum(1 for s in latest_statuses if s.is_spraying)
-    idle = total - spraying
+    blocked = sum(1 for s in latest_statuses if s.is_suspected_blocked)
+    idle = total - spraying - blocked
     avg_flow = sum(s.flow_rate for s in latest_statuses) / total if total > 0 else 0.0
     return {
         "total_nozzles": total,
         "spraying_count": spraying,
         "idle_count": idle,
+        "blocked_count": blocked,
         "avg_flow_rate": round(avg_flow, 2),
     }
+
+
+def update_nozzle_blockage_status(
+    db: Session,
+    status_id: int,
+    is_suspected_blocked: bool,
+    blockage_score: float = 0.0,
+) -> Optional[NozzleStatus]:
+    status = get_nozzle_status(db, status_id)
+    if not status:
+        return None
+    status.is_suspected_blocked = is_suspected_blocked
+    status.blockage_score = blockage_score
+    db.commit()
+    db.refresh(status)
+    return status
+
+
+def get_blocked_nozzles(db: Session) -> list[NozzleStatus]:
+    latest = get_all_latest_statuses(db)
+    return [s for s in latest if s.is_suspected_blocked]

@@ -13,6 +13,8 @@ class NozzleStatus(Base):
     is_spraying = Column(Boolean, default=False)
     flow_rate = Column(Float, default=0.0)
     pressure = Column(Float, nullable=True)
+    is_suspected_blocked = Column(Boolean, default=False)
+    blockage_score = Column(Float, default=0.0)
     strategy_id = Column(Integer, ForeignKey("spray_strategies.id"), nullable=True)
     recorded_at = Column(DateTime, default=datetime.utcnow, index=True)
 

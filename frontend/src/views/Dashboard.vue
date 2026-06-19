@@ -64,14 +64,57 @@
           <span class="stat-value" style="color:#6b7280">{{ nozzleStore.stats.idle_count }}</span>
         </div>
       </div>
-      <div class="stat-card">
-        <div class="stat-icon-mini">📊</div>
+      <div class="stat-card" :class="{ 'has-warning': nozzleStore.stats.blocked_count > 0 }">
+        <div class="stat-icon-mini" :class="{ blocked: nozzleStore.stats.blocked_count > 0 }">
+          {{ nozzleStore.stats.blocked_count > 0 ? '⚠️' : '✅' }}
+        </div>
         <div class="stat-content">
-          <span class="stat-label">平均流量</span>
-          <span class="stat-value">
-            {{ nozzleStore.stats.avg_flow_rate.toFixed(2) }}
-            <small>L/min</small>
+          <span class="stat-label">疑似堵塞</span>
+          <span class="stat-value" :style="{ color: nozzleStore.stats.blocked_count > 0 ? '#f59e0b' : '#6b7280' }">
+            {{ nozzleStore.stats.blocked_count }}
           </span>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="alertStore.summary.unresolved_count > 0" class="todo-section">
+      <div class="todo-header">
+        <div class="todo-title-wrap">
+          <span class="todo-icon">📋</span>
+          <h3 class="todo-title">待办事项</h3>
+          <span class="todo-badge">{{ alertStore.summary.unresolved_count }}</span>
+        </div>
+      </div>
+      <div class="todo-list">
+        <div
+          v-for="alert in unresolvedAlerts"
+          :key="alert.id"
+          class="todo-item"
+          :class="`severity-${alert.severity}`"
+        >
+          <div class="todo-indicator"></div>
+          <div class="todo-content">
+            <div class="todo-main">
+              <span class="todo-severity" :class="`badge-${alert.severity}`">
+                {{ getSeverityText(alert.severity) }}
+              </span>
+              <span class="todo-name">{{ alert.title }}</span>
+            </div>
+            <p class="todo-desc">{{ alert.message }}</p>
+            <div class="todo-meta">
+              <span v-if="alert.related_nozzle_id" class="todo-nozzle">
+                🔧 相关喷头: {{ alert.related_nozzle_id }}
+              </span>
+              <span class="todo-time">{{ formatTime(alert.created_at) }}</span>
+            </div>
+          </div>
+          <button
+            class="todo-action"
+            @click="handleResolveAlert(alert.id)"
+            title="标记为已处理"
+          >
+            ✓
+          </button>
         </div>
       </div>
     </div>
@@ -114,16 +157,30 @@
           </button>
         </div>
         <div class="nozzle-list">
-          <div v-for="nozzle in nozzleStore.latestItems" :key="nozzle.nozzle_id" class="nozzle-row">
+          <div
+            v-for="nozzle in nozzleStore.latestItems"
+            :key="nozzle.nozzle_id"
+            class="nozzle-row"
+            :class="{ 'row-blocked': nozzle.is_suspected_blocked }"
+          >
             <div class="nozzle-info">
-              <span class="nozzle-id">{{ nozzle.nozzle_id }}</span>
-              <span class="nozzle-status" :class="nozzle.is_spraying ? 'spraying' : 'idle'">
-                {{ nozzle.is_spraying ? '喷雾中' : '空闲' }}
+              <span class="nozzle-id" :class="{ 'id-blocked': nozzle.is_suspected_blocked }">
+                {{ nozzle.nozzle_id }}
+                <span v-if="nozzle.is_suspected_blocked" class="blocked-badge">⚠️ 堵塞</span>
+              </span>
+              <span
+                class="nozzle-status"
+                :class="getNozzleStatusClass(nozzle)"
+              >
+                {{ getNozzleStatusText(nozzle) }}
               </span>
             </div>
             <div class="nozzle-metrics">
               <span class="metric-item">流量: <b>{{ nozzle.flow_rate.toFixed(2) }}</b> L/min</span>
               <span v-if="nozzle.pressure" class="metric-item">压力: <b>{{ nozzle.pressure.toFixed(2) }}</b> MPa</span>
+              <span v-if="nozzle.is_suspected_blocked" class="metric-item blockage-score">
+                嫌疑度: <b style="color:#f59e0b">{{ (nozzle.blockage_score * 100).toFixed(0) }}%</b>
+              </span>
             </div>
           </div>
           <div v-if="nozzleStore.latestItems.length === 0" class="empty-list">
@@ -149,6 +206,7 @@ import {
 import VChart from 'vue-echarts'
 import { useNutrientStore } from '@/stores/nutrient'
 import { useNozzleStore } from '@/stores/nozzle'
+import { useAlertStore } from '@/stores/alert'
 
 use([
   CanvasRenderer,
@@ -166,9 +224,45 @@ const greenGradient = new graphic.LinearGradient(0, 0, 0, 1, [
   { offset: 1, color: '#16a34a' }
 ])
 
+const yellowGradient = new graphic.LinearGradient(0, 0, 0, 1, [
+  { offset: 0, color: '#f59e0b' },
+  { offset: 1, color: '#d97706' }
+])
+
 const nutrientStore = useNutrientStore()
 const nozzleStore = useNozzleStore()
+const alertStore = useAlertStore()
 const loading = ref(false)
+
+const unresolvedAlerts = computed(() => {
+  return alertStore.items.filter((a) => !a.is_resolved)
+})
+
+const getSeverityText = (severity) => {
+  const map = { critical: '严重', warning: '警告', info: '信息' }
+  return map[severity] || severity
+}
+
+const getNozzleStatusClass = (nozzle) => {
+  if (nozzle.is_suspected_blocked) return 'blocked'
+  return nozzle.is_spraying ? 'spraying' : 'idle'
+}
+
+const getNozzleStatusText = (nozzle) => {
+  if (nozzle.is_suspected_blocked) return '疑似堵塞'
+  return nozzle.is_spraying ? '喷雾中' : '空闲'
+}
+
+const formatTime = (isoStr) => {
+  const d = new Date(isoStr)
+  return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
+const handleResolveAlert = async (id) => {
+  if (confirm('确定要将此告警标记为已处理吗？')) {
+    await alertStore.markResolved(id)
+  }
+}
 
 const nutrientChartOption = computed(() => {
   const sorted = [...nutrientStore.history].sort(
@@ -223,7 +317,14 @@ const nutrientChartOption = computed(() => {
 })
 
 const nozzlePieOption = computed(() => {
-  const { spraying_count, idle_count } = nozzleStore.stats
+  const { spraying_count, idle_count, blocked_count } = nozzleStore.stats
+  const data = [
+    { value: spraying_count, name: '喷雾中', itemStyle: { color: '#22c55e' } },
+    { value: idle_count, name: '空闲', itemStyle: { color: '#9ca3af' } }
+  ]
+  if (blocked_count > 0) {
+    data.push({ value: blocked_count, name: '疑似堵塞', itemStyle: { color: '#f59e0b' } })
+  }
   return {
     tooltip: { trigger: 'item' },
     legend: { bottom: 0 },
@@ -235,10 +336,7 @@ const nozzlePieOption = computed(() => {
         avoidLabelOverlap: false,
         itemStyle: { borderRadius: 8, borderColor: '#fff', borderWidth: 2 },
         label: { show: true, formatter: '{b}: {c}' },
-        data: [
-          { value: spraying_count, name: '喷雾中', itemStyle: { color: '#22c55e' } },
-          { value: idle_count, name: '空闲', itemStyle: { color: '#9ca3af' } }
-        ]
+        data
       }
     ]
   }
@@ -265,7 +363,11 @@ const nozzleFlowOption = computed(() => {
         data: sorted.map((n) => ({
           value: n.flow_rate,
           itemStyle: {
-            color: n.is_spraying ? greenGradient : '#d1d5db',
+            color: n.is_suspected_blocked
+              ? yellowGradient
+              : n.is_spraying
+                ? greenGradient
+                : '#d1d5db',
             borderRadius: [6, 6, 0, 0]
           }
         })),
@@ -282,7 +384,9 @@ const refreshData = async () => {
       nutrientStore.fetchLatest(),
       nutrientStore.fetchHistory({ limit: 100, minutes: 1440 }),
       nozzleStore.fetchLatest(),
-      nozzleStore.fetchStats()
+      nozzleStore.fetchStats(),
+      alertStore.fetchList({ is_resolved: false }),
+      alertStore.fetchSummary()
     ])
   } finally {
     loading.value = false
@@ -367,6 +471,11 @@ onUnmounted(() => {
 
 .stat-icon-mini.active { background: #dcfce7; color: #16a34a; }
 .stat-icon-mini.idle { background: #f3f4f6; color: #9ca3af; }
+.stat-icon-mini.blocked { background: #fef3c7; color: #f59e0b; }
+.stat-card.has-warning {
+  border: 1px solid #f59e0b;
+  background: #fffbeb;
+}
 
 .stat-content {
   display: flex;
@@ -509,6 +618,12 @@ onUnmounted(() => {
   color: #6b7280;
 }
 
+.nozzle-status.blocked {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+  font-weight: 600;
+}
+
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.6; }
@@ -531,6 +646,181 @@ onUnmounted(() => {
   text-align: center;
   color: #9ca3af;
   font-size: 13px;
+}
+
+.row-blocked {
+  background: #fffbeb !important;
+  border-left: 4px solid #f59e0b !important;
+}
+
+.id-blocked {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.blocked-badge {
+  background: #f59e0b;
+  color: #fff;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.blockage-score {
+  color: #92400e;
+}
+
+.todo-section {
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  border-radius: 12px;
+  padding: 16px 20px;
+  margin-bottom: 20px;
+}
+
+.todo-header {
+  margin-bottom: 12px;
+}
+
+.todo-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.todo-icon {
+  font-size: 20px;
+}
+
+.todo-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #92400e;
+}
+
+.todo-badge {
+  background: #f59e0b;
+  color: #fff;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.todo-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.todo-item {
+  background: #fff;
+  border-radius: 8px;
+  padding: 12px 16px;
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+  border: 1px solid #fde68a;
+}
+
+.severity-warning .todo-indicator {
+  background: #f59e0b;
+}
+
+.severity-critical .todo-indicator {
+  background: #ef4444;
+}
+
+.severity-info .todo-indicator {
+  background: #3b82f6;
+}
+
+.todo-indicator {
+  width: 4px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.todo-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.todo-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.todo-severity {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.badge-warning {
+  background: rgba(245, 158, 11, 0.15);
+  color: #d97706;
+}
+
+.badge-critical {
+  background: rgba(239, 68, 68, 0.15);
+  color: #dc2626;
+}
+
+.badge-info {
+  background: rgba(59, 130, 246, 0.15);
+  color: #2563eb;
+}
+
+.todo-name {
+  font-weight: 600;
+  color: #1f2937;
+  font-size: 14px;
+}
+
+.todo-desc {
+  margin: 0 0 6px 0;
+  font-size: 13px;
+  color: #6b7280;
+  line-height: 1.5;
+}
+
+.todo-meta {
+  display: flex;
+  gap: 16px;
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.todo-nozzle {
+  color: #d97706;
+  font-weight: 500;
+}
+
+.todo-action {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid #f59e0b;
+  background: #fff;
+  color: #f59e0b;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s;
+  flex-shrink: 0;
+  align-self: center;
+}
+
+.todo-action:hover {
+  background: #f59e0b;
+  color: #fff;
 }
 
 @media (max-width: 1024px) {

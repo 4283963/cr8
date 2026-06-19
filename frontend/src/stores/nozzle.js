@@ -8,6 +8,7 @@ export const useNozzleStore = defineStore('nozzle', {
       total_nozzles: 0,
       spraying_count: 0,
       idle_count: 0,
+      blocked_count: 0,
       avg_flow_rate: 0
     },
     history: [],

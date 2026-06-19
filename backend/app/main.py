@@ -1,3 +1,4 @@
+import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -7,6 +8,13 @@ from .routers import (
     spray_strategy_router,
     nozzle_status_router,
     nutrient_solution_router,
+    system_alert_router,
+)
+from .scheduler import start_blockage_detector
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 
 Base.metadata.create_all(bind=engine)
@@ -44,3 +52,6 @@ def health_check():
 app.include_router(spray_strategy_router, prefix=settings.API_V1_PREFIX)
 app.include_router(nozzle_status_router, prefix=settings.API_V1_PREFIX)
 app.include_router(nutrient_solution_router, prefix=settings.API_V1_PREFIX)
+app.include_router(system_alert_router, prefix=settings.API_V1_PREFIX)
+
+start_blockage_detector()

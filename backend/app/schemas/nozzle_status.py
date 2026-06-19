@@ -8,6 +8,8 @@ class NozzleStatusBase(BaseModel):
     is_spraying: bool = False
     flow_rate: float = Field(0.0, ge=0)
     pressure: Optional[float] = Field(None, ge=0)
+    is_suspected_blocked: bool = False
+    blockage_score: float = Field(0.0, ge=0, le=1)
     strategy_id: Optional[int] = None
 
 
@@ -32,4 +34,5 @@ class NozzleStatusStats(BaseModel):
     total_nozzles: int
     spraying_count: int
     idle_count: int
+    blocked_count: int
     avg_flow_rate: float
