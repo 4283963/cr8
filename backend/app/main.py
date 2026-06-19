@@ -3,7 +3,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
 from .database import engine, Base
-from .routers import api_router
+from .routers import (
+    spray_strategy_router,
+    nozzle_status_router,
+    nutrient_solution_router,
+)
 
 Base.metadata.create_all(bind=engine)
 
@@ -37,4 +41,6 @@ def health_check():
     return {"status": "healthy"}
 
 
-app.include_router(api_router, prefix=settings.API_V1_PREFIX)
+app.include_router(spray_strategy_router, prefix=settings.API_V1_PREFIX)
+app.include_router(nozzle_status_router, prefix=settings.API_V1_PREFIX)
+app.include_router(nutrient_solution_router, prefix=settings.API_V1_PREFIX)
